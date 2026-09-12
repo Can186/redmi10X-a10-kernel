@@ -28,6 +28,19 @@ jobs:
           wget -q -O arm32.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/refs/tags/android-10.0.0_r47.tar.gz
           mkdir -p /opt/gcc-arm32 && tar -xf arm32.tar.gz -C /opt/gcc-arm32
 
+      - name: 强制 DrvGen.py 使用 Python 2
+        run: |
+          # 看 DrvGen.py 的 shebang
+          head -1 tools/dct/DrvGen.py
+          # 改成 Miniconda2 的 python
+          sed -i "1s|^#!.*|#!$HOME/miniconda2/bin/python|" tools/dct/DrvGen.py
+          head -1 tools/dct/DrvGen.py
+          # 让 drvgen.mk 用 python 调用，不用相对路径直接执行
+          grep -n "DrvGen.py" scripts/drvgen/drvgen.mk
+          sed -i 's|\$(srctree)/../tools/dct/DrvGen.py|python $(srctree)/tools/dct/DrvGen.py|g' scripts/drvgen/drvgen.mk
+          sed -i 's|\.\./tools/dct/DrvGen.py|python ../tools/dct/DrvGen.py|g' scripts/drvgen/drvgen.mk
+          grep -n "DrvGen.py" scripts/drvgen/drvgen.mk
+
       - name: 编译内核并开启 DroidSpaces 所需配置
         run: |
           export PATH="$HOME/miniconda2/bin:/opt/clang9/bin:/opt/gcc-arm64/bin:/opt/gcc-arm32/bin:$PATH"
