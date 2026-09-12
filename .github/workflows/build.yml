@@ -4,7 +4,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-20.04
     steps:
       - name: 拉取内核源码
         uses: actions/checkout@v4
@@ -12,7 +12,7 @@ jobs:
       - name: 安装依赖和工具链
         run: |
           sudo apt-get update
-          sudo apt-get install -y flex bison bc libelf-dev libssl-dev make zip wget git
+          sudo apt-get install -y flex bison bc libelf-dev libssl-dev make zip wget git python2 python-is-python2
 
           wget -q https://github.com/llvm/llvm-project/releases/download/llvmorg-9.0.1/clang+llvm-9.0.1-x86_64-linux-gnu-ubuntu-16.04.tar.xz
           tar -xf clang+llvm-9.0.1-x86_64-linux-gnu-ubuntu-16.04.tar.xz -C /opt
