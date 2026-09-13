@@ -159,7 +159,10 @@ jobs:
           grep -n "KERNEL_mtk_wcn_cmb_sdio_request_eirq" "$WMT_GPIO" | head
           sed -i '1i extern void KERNEL_mtk_wcn_cmb_sdio_request_eirq(void);\n' "$WMT_GPIO"
           head -5 "$WMT_GPIO"
-
+      - name: 抑制 Clang 未知警告
+        run: |
+          sed -i '/^KBUILD_CFLAGS   :=/a KBUILD_CFLAGS   += -Wno-unknown-warning-option -Wno-ignored-optimization-argument' Makefile
+          grep -n "unknown-warning-option" Makefile
       - name: 编译内核
         run: |
           export PATH="$HOME/miniconda2/bin:/opt/clang9/bin:/opt/gcc-arm64/bin:/opt/gcc-arm32/bin:$PATH"
