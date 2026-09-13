@@ -54,121 +54,18 @@ jobs:
           sed -i 's|\$(srctree)/../tools/dct/DrvGen.py|python $(srctree)/tools/dct/DrvGen.py|g' scripts/drvgen/drvgen.mk
           sed -i 's|\.\./tools/dct/DrvGen.py|python ../tools/dct/DrvGen.py|g' scripts/drvgen/drvgen.mk
 
-      - name: 拉取 MTK 驱动模块
+      - name: 拉取 MTK 驱动模块 (bomb-q-oss)
         run: |
           mkdir -p vendor/mediatek
-          git clone --depth=1 --branch cezanne-r-oss \
+          git clone --depth=1 --branch bomb-q-oss \
             https://github.com/MiCode/MTK_kernel_modules.git \
             vendor/mediatek/kernel_modules
-
-      - name: 修改驱动 Makefile 的 TOP 路径
-        run: |
-          for f in \
-            vendor/mediatek/kernel_modules/connectivity/wlan/core/gen4m/Makefile \
-            vendor/mediatek/kernel_modules/connectivity/wlan/adaptor/Makefile \
-            vendor/mediatek/kernel_modules/connectivity/bt/mt66xx/legacy/Makefile \
-            vendor/mediatek/kernel_modules/connectivity/fmradio/Makefile \
-            vendor/mediatek/kernel_modules/connectivity/gps/Makefile; do
-            echo "=== $f ==="
-            grep -n "^TOP" "$f" || echo "  (no TOP)"
-            sed -i 's|TOP[[:space:]]*:=[[:space:]]*\$(srctree)/\.\.|TOP := $(srctree)/|' "$f"
-            grep -n "^TOP" "$f" || echo "  (still no TOP)"
-          done
-
-      - name: 修改 connectivity/Makefile (WLAN/BT/GPS)
-        run: |
-          CONN_MK="drivers/misc/mediatek/connectivity/Makefile"
-          cp "$CONN_MK" "${CONN_MK}.bak"
-
-          sed -i 's|\$(srctree)/\.\./|\$(srctree)/|g' "$CONN_MK"
-
-          sed -i 's|ABS_PATH_TO_WMT_DRV[[:space:]]*=[[:space:]]*\$(srctree)/\$(PATH_TO_WMT_DRV)|ABS_PATH_TO_WMT_DRV       = \$(abspath \$(srctree)/\$(PATH_TO_WMT_DRV))|' "$CONN_MK"
-          sed -i 's|ABS_PATH_TO_WLAN_CHR_DRV[[:space:]]*=[[:space:]]*\$(srctree)/\$(PATH_TO_WLAN_CHR_DRV)|ABS_PATH_TO_WLAN_CHR_DRV  = \$(abspath \$(srctree)/\$(PATH_TO_WLAN_CHR_DRV))|' "$CONN_MK"
-          sed -i 's|ABS_PATH_TO_WLAN_DRV[[:space:]]*=[[:space:]]*\$(srctree)/\$(PATH_TO_WLAN_DRV)|ABS_PATH_TO_WLAN_DRV      = \$(abspath \$(srctree)/\$(PATH_TO_WLAN_DRV))|' "$CONN_MK"
-          sed -i 's|ABS_PATH_TO_BT_DRV[[:space:]]*=[[:space:]]*\$(srctree)/\$(PATH_TO_BT_DRV)|ABS_PATH_TO_BT_DRV       = \$(abspath \$(srctree)/\$(PATH_TO_BT_DRV))|' "$CONN_MK"
-          sed -i 's|ABS_PATH_TO_GPS_DRV[[:space:]]*=[[:space:]]*\$(srctree)/\$(PATH_TO_GPS_DRV)|ABS_PATH_TO_GPS_DRV      = \$(abspath \$(srctree)/\$(PATH_TO_GPS_DRV))|' "$CONN_MK"
-
-          sed -i 's|\bunlink\b|rm -rf|g' "$CONN_MK"
-          sed -i 's|\bln -s\b|ln -snf|g' "$CONN_MK"
-
-          sed -i 's|^# For BT built-in mode start @{|For BT built-in mode start @{|' "$CONN_MK"
-
-          python3 << 'PYEOF'
-          path = "drivers/misc/mediatek/connectivity/Makefile"
-          with open(path) as f:
-              lines = f.readlines()
-          in_bt = False
-          out = []
-          for line in lines:
-              if 'For BT built-in mode start @{' in line and not line.strip().startswith('#'):
-                  in_bt = True
-                  out.append(line)
-                  continue
-              if '# @} For BT built-in mode end' in line:
-                  in_bt = False
-                  out.append(line)
-                  continue
-              if in_bt and line.startswith('# '):
-                  out.append(line[2:])
-              else:
-                  out.append(line)
-          with open(path, 'w') as f:
-              f.writelines(out)
-          PYEOF
-
-          echo "=== 验证关键行 ==="
-          grep -n -E "ABS_PATH_TO_(WMT|WLAN|BT|GPS)|PATH_TO_(WMT|WLAN|BT|GPS)" "$CONN_MK" | head -30
-          echo "=== 验证 ln/rm ==="
-          grep -n -E "ln -snf|rm -rf" "$CONN_MK" | head -10
-
-      - name: 修改 GPS/BT 驱动为内建
-        run: |
-          sed -i 's/^obj-m += \$(MODULE_NAME)\.o/obj-y += $(MODULE_NAME).o/' vendor/mediatek/kernel_modules/connectivity/gps/Makefile
-          sed -i 's/^obj-m += \$(MODULE_NAME)\.o/obj-y += $(MODULE_NAME).o/' vendor/mediatek/kernel_modules/connectivity/bt/mt66xx/legacy/Makefile
-          sed -i 's/static void __exit gps_emi_mod_exit/static void gps_emi_mod_exit/' vendor/mediatek/kernel_modules/connectivity/gps/gps_emi.c
-          sed -i 's/static void __exit gps_fw_log_exit/static void gps_fw_log_exit/' vendor/mediatek/kernel_modules/connectivity/gps/fw_log_gps.c
-
-      - name: 创建 WLAN/BT/GPS 软链接
-        run: |
-          for d in wmt_drv wmt_chrdev_wifi wlan_drv_gen4m bt gps_drv; do
-            rm -rf drivers/misc/mediatek/connectivity/$d
-          done
-
-          ln -snf "$(pwd)/vendor/mediatek/kernel_modules/connectivity/common" drivers/misc/mediatek/connectivity/wmt_drv
-          ln -snf "$(pwd)/vendor/mediatek/kernel_modules/connectivity/wlan/adaptor" drivers/misc/mediatek/connectivity/wmt_chrdev_wifi
-          ln -snf "$(pwd)/vendor/mediatek/kernel_modules/connectivity/wlan/core/gen4m" drivers/misc/mediatek/connectivity/wlan_drv_gen4m
-          ln -snf "$(pwd)/vendor/mediatek/kernel_modules/connectivity/bt/mt66xx/legacy" drivers/misc/mediatek/connectivity/bt
-          ln -snf "$(pwd)/vendor/mediatek/kernel_modules/connectivity/gps" drivers/misc/mediatek/connectivity/gps_drv
-
-          ls -la drivers/misc/mediatek/connectivity/ | grep "^l"
-
-      - name: 修复 WLAN 驱动编译问题
-        run: |
-          GL_INIT="vendor/mediatek/kernel_modules/connectivity/wlan/core/gen4m/os/linux/gl_init.c"
-          grep -n "gConEmiPhyBaseFinal\|kalSetEmiMpuProtection" "$GL_INIT" | head
-          sed -i '1i extern unsigned long gConEmiPhyBaseFinal;\nextern unsigned long long gConEmiSizeFinal;\nextern void kalSetEmiMpuProtection(unsigned long emi_phy_base, int enable);\n' "$GL_INIT"
-          head -5 "$GL_INIT"
-
-          WMT_GPIO="vendor/mediatek/kernel_modules/connectivity/common/common_detect/wmt_gpio.c"
-          grep -n "KERNEL_mtk_wcn_cmb_sdio_request_eirq" "$WMT_GPIO" | head
-          sed -i '1i extern void KERNEL_mtk_wcn_cmb_sdio_request_eirq(void);\n' "$WMT_GPIO"
-          head -5 "$WMT_GPIO"
-
-          AXI_C="vendor/mediatek/kernel_modules/connectivity/wlan/core/gen4m/os/linux/hif/axi/axi.c"
-          sed -i '1i extern void kalSetDrvEmiMpuProtection(unsigned long emi_phy_base, int enable, unsigned int size);\n' "$AXI_C"
-          head -3 "$AXI_C"
-
-          WMT_IDC="vendor/mediatek/kernel_modules/connectivity/common/common_main/linux/wmt_idc.c"
-          echo "=== 当前文件头 5 行 ==="
-          head -5 "$WMT_IDC"
-          echo "=== 搜索 MOD_MMD_GMMGR 定义 ==="
-          grep -rn "MOD_MMD_GMMGR" vendor/mediatek/kernel_modules/connectivity/ | head -10
-
-          if ! grep -rq "#define MOD_MMD_GMMGR" vendor/mediatek/kernel_modules/connectivity/; then
-            sed -i '1i #ifndef MOD_MMD_GMMGR\n#define MOD_MMD_GMMGR 0x0C\n#endif' "$WMT_IDC"
-          fi
-          echo "=== 修改后头部 ==="
-          head -8 "$WMT_IDC"
+          echo "=== 检查目录结构 ==="
+          ls -la vendor/mediatek/kernel_modules/connectivity/
+          echo "=== wlan 目录 ==="
+          ls -la vendor/mediatek/kernel_modules/connectivity/wlan/ 2>/dev/null || echo "无 wlan 目录"
+          echo "=== 检查 gen4m ==="
+          ls -la vendor/mediatek/kernel_modules/connectivity/wlan/core/gen4m/ 2>/dev/null | head -20 || echo "无 gen4m"
 
       - name: 编译内核
         run: |
@@ -211,24 +108,19 @@ jobs:
             --enable CONFIG_MEMCG \
             --enable CONFIG_CGROUP_SCHED \
             --enable CONFIG_FAIR_GROUP_SCHED \
-            --enable CONFIG_CGROUP_FREEZER \
-            --enable CONFIG_WLAN_DRV_BUILD_IN \
-            --enable CONFIG_MTK_COMBO_BT \
-            --enable CONFIG_MTK_COMBO_GPS \
-            --enable CONFIG_MTK_COMBO_WIFI \
-            --set-str CONFIG_MTK_COMBO_CHIP CONSYS_6873
+            --enable CONFIG_CGROUP_FREEZER
 
           make -j$(nproc) ARCH=arm64 SUBARCH=arm64 CC=clang LD=ld.lld O=out olddefconfig
 
           echo "=== 验证配置 ==="
-          grep -E "CONFIG_(PID_NS|UTS_NS|IPC_NS|SYSVIPC|DEVTMPFS|NET_NS|VETH|USER_NS|TUN|WLAN_DRV_BUILD_IN|MTK_COMBO_BT|MTK_COMBO_GPS|MTK_COMBO_WIFI|MTK_COMBO_CHIP|KALLSYMS_ALL)=" out/.config || true
+          grep -E "CONFIG_(PID_NS|UTS_NS|IPC_NS|SYSVIPC|DEVTMPFS|NET_NS|VETH|USER_NS|TUN|KALLSYMS_ALL)=" out/.config || true
 
-          make -j$(nproc) ARCH=arm64 SUBARCH=arm64 CC=clang LD=ld.lld O=out CONFIG_WLAN_DRV_BUILD_IN=y
+          make -j$(nproc) ARCH=arm64 SUBARCH=arm64 CC=clang LD=ld.lld O=out
 
       - name: 上传编译产物
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel_Android10_Redmi10X5G_WLAN
+          name: Kernel_Android10_Redmi10X5G
           path: |
             out/arch/arm64/boot/Image
             out/arch/arm64/boot/dts/mediatek/mt6873.dtb
