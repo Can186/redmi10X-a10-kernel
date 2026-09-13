@@ -164,6 +164,7 @@ jobs:
           scripts/config --file out/.config \
             --disable CONFIG_CC_STACKPROTECTOR_STRONG \
             --disable LTO_CLANG \
+            --enable CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH \
             --enable CONFIG_KALLSYMS \
             --enable CONFIG_KALLSYMS_ALL \
             --enable CONFIG_NAMESPACES \
