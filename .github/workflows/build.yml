@@ -1,6 +1,5 @@
 name: Build Android 10 Kernel with WLAN
-on:
-  workflow_dispatch:
+on: push
 
 jobs:
   build:
@@ -59,9 +58,6 @@ jobs:
           git clone --depth=1 --branch bomb-q-oss \
             https://github.com/MiCode/MTK_kernel_modules.git \
             vendor/mediatek/kernel_modules
-          echo "=== wlan 结构 ==="
-          ls vendor/mediatek/kernel_modules/connectivity/wlan/
-          ls vendor/mediatek/kernel_modules/connectivity/wlan/core/
 
       - name: 修改 WLAN 驱动 Makefile 的 TOP
         run: |
@@ -79,21 +75,17 @@ jobs:
           CONN_MK="drivers/misc/mediatek/connectivity/Makefile"
           cp "$CONN_MK" "${CONN_MK}.bak"
 
-          # 去掉 $(srctree)/../
           sed -i 's|\$(srctree)/\.\./|\$(srctree)/|g' "$CONN_MK"
 
-          # WLAN/WMT 的 ABS_PATH 加 abspath
           sed -i 's|ABS_PATH_TO_WMT_DRV[[:space:]]*=[[:space:]]*\$(srctree)/\$(PATH_TO_WMT_DRV)|ABS_PATH_TO_WMT_DRV       = \$(abspath \$(srctree)/\$(PATH_TO_WMT_DRV))|' "$CONN_MK"
           sed -i 's|ABS_PATH_TO_WLAN_CHR_DRV[[:space:]]*=[[:space:]]*\$(srctree)/\$(PATH_TO_WLAN_CHR_DRV)|ABS_PATH_TO_WLAN_CHR_DRV  = \$(abspath \$(srctree)/\$(PATH_TO_WLAN_CHR_DRV))|' "$CONN_MK"
           sed -i 's|ABS_PATH_TO_WLAN_DRV[[:space:]]*=[[:space:]]*\$(srctree)/\$(PATH_TO_WLAN_DRV)|ABS_PATH_TO_WLAN_DRV      = \$(abspath \$(srctree)/\$(PATH_TO_WLAN_DRV))|' "$CONN_MK"
 
-          # unlink → rm -rf, ln -s → ln -snf
           sed -i 's|\bunlink\b|rm -rf|g' "$CONN_MK"
           sed -i 's|\bln -s\b|ln -snf|g' "$CONN_MK"
 
           echo "=== 验证 WLAN 相关行 ==="
           grep -n -E "ABS_PATH_TO_(WMT|WLAN)|PATH_TO_(WMT|WLAN)" "$CONN_MK" | head -20
-          grep -n -E "ln -snf|rm -rf" "$CONN_MK" | grep -E "wmt|wlan" | head -10
 
       - name: 创建 WLAN 软链接
         run: |
@@ -106,26 +98,37 @@ jobs:
           ln -snf "$(pwd)/vendor/mediatek/kernel_modules/connectivity/wlan/core/gen4m" drivers/misc/mediatek/connectivity/wlan_drv_gen4m
 
           ls -la drivers/misc/mediatek/connectivity/ | grep "^l"
+
       - name: 修复 wmt_drv 的 AUTOCONF_H
         run: |
           WMT_MK="drivers/misc/mediatek/connectivity/wmt_drv/Makefile"
+          echo "=== 原始前 5 行 ==="
           head -5 "$WMT_MK"
           sed -i '1i AUTOCONF_H ?= $(srctree)/$(objtree)/include/config/auto.conf' "$WMT_MK"
+          echo "=== 修改后前 5 行 ==="
+          head -5 "$WMT_MK"
+
       - name: 修复 wmt_exp.h 找不到
         run: |
+          COMMON_INC="\$(srctree)/vendor/mediatek/kernel_modules/connectivity/common/common_main/include"
+          CORE_INC="\$(srctree)/vendor/mediatek/kernel_modules/connectivity/common/core/include"
+
           ADAPTOR_MK="vendor/mediatek/kernel_modules/connectivity/wlan/adaptor/Makefile"
+          echo "=== adaptor Makefile 前 10 行 ==="
+          head -10 "$ADAPTOR_MK"
+          sed -i "1i ccflags-y += -I$COMMON_INC" "$ADAPTOR_MK"
+          sed -i "2i ccflags-y += -I$CORE_INC" "$ADAPTOR_MK"
+          echo "=== 修改后前 10 行 ==="
+          head -10 "$ADAPTOR_MK"
 
-          # 先清掉之前加错的路径
-          sed -i '\|common/core/include|d' "$ADAPTOR_MK"
+          GEN4M_MK="vendor/mediatek/kernel_modules/connectivity/wlan/core/gen4m/Makefile"
+          echo "=== gen4m Makefile 前 5 行 ==="
+          head -5 "$GEN4M_MK"
+          sed -i "1i ccflags-y += -I$COMMON_INC" "$GEN4M_MK"
+          sed -i "2i ccflags-y += -I$CORE_INC" "$GEN4M_MK"
+          echo "=== 修改后前 5 行 ==="
+          head -5 "$GEN4M_MK"
 
-          # 加入正确的三个路径
-          sed -i '1i ccflags-y += -I$(srctree)/vendor/mediatek/kernel_modules/connectivity/common/common_main/include\nccflags-y += -I$(srctree)/vendor/mediatek/kernel_modules/connectivity/common/core/include\nccflags-y += -I$(srctree)/vendor/mediatek/kernel_modules/connectivity/common/linux/include' "$ADAPTOR_MK"
-
-          echo "=== 修改后前 6 行 ==="
-          head -6 "$ADAPTOR_MK"
-
-          echo "=== 验证 wmt_exp.h 位置 ==="
-          find vendor/mediatek/kernel_modules/connectivity/common -name "wmt_exp.h" 2>/dev/null
       - name: 编译内核
         run: |
           export PATH="$HOME/miniconda2/bin:/opt/clang9/bin:/opt/gcc-arm64/bin:/opt/gcc-arm32/bin:$PATH"
@@ -183,7 +186,9 @@ jobs:
           echo "=== 验证配置 ==="
           grep -E "CONFIG_(PID_NS|UTS_NS|IPC_NS|SYSVIPC|DEVTMPFS|NET_NS|VETH|USER_NS|TUN|WLAN_DRV_BUILD_IN|MTK_COMBO_WIFI|MTK_COMBO_CHIP|KALLSYMS_ALL)=" out/.config || true
 
-          make -j$(nproc) ARCH=arm64 SUBARCH=arm64 CC=clang LD=ld.lld O=out CONFIG_WLAN_DRV_BUILD_IN=y
+          make -j$(nproc) ARCH=arm64 SUBARCH=arm64 CC=clang LD=ld.lld O=out \
+            AUTOCONF_H=$(pwd)/out/include/config/auto.conf \
+            CONFIG_WLAN_DRV_BUILD_IN=y
 
       - name: 上传编译产物
         uses: actions/upload-artifact@v4
