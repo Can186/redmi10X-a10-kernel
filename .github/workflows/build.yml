@@ -60,12 +60,122 @@ jobs:
           git clone --depth=1 --branch bomb-q-oss \
             https://github.com/MiCode/MTK_kernel_modules.git \
             vendor/mediatek/kernel_modules
-          echo "=== 检查目录结构 ==="
-          ls -la vendor/mediatek/kernel_modules/connectivity/
-          echo "=== wlan 目录 ==="
-          ls -la vendor/mediatek/kernel_modules/connectivity/wlan/ 2>/dev/null || echo "无 wlan 目录"
-          echo "=== 检查 gen4m ==="
-          ls -la vendor/mediatek/kernel_modules/connectivity/wlan/core/gen4m/ 2>/dev/null | head -20 || echo "无 gen4m"
+          echo "=== bt/mt66xx ==="
+          ls -la vendor/mediatek/kernel_modules/connectivity/bt/mt66xx/ 2>/dev/null || echo "无 mt66xx"
+
+      - name: 修改驱动 Makefile 的 TOP 路径
+        run: |
+          for f in \
+            vendor/mediatek/kernel_modules/connectivity/wlan/core/gen4m/Makefile \
+            vendor/mediatek/kernel_modules/connectivity/wlan/adaptor/Makefile \
+            vendor/mediatek/kernel_modules/connectivity/fmradio/Makefile \
+            vendor/mediatek/kernel_modules/connectivity/gps/Makefile; do
+            if [ -f "$f" ]; then
+              echo "=== $f ==="
+              sed -i 's|TOP[[:space:]]*:=[[:space:]]*\$(srctree)/\.\.|TOP := $(srctree)/|' "$f"
+              grep -n "^TOP" "$f" || echo "  (no TOP)"
+            fi
+          done
+          # BT 单独处理
+          for bt in \
+            vendor/mediatek/kernel_modules/connectivity/bt/mt66xx/legacy/Makefile \
+            vendor/mediatek/kernel_modules/connectivity/bt/mt66xx/connac2/Makefile; do
+            if [ -f "$bt" ]; then
+              sed -i 's|TOP[[:space:]]*:=[[:space:]]*\$(srctree)/\.\.|TOP := $(srctree)/|' "$bt"
+              echo "=== BT: $bt ==="
+              grep -n "^TOP" "$bt"
+            fi
+          done
+
+      - name: 修改 connectivity/Makefile (WLAN/BT/GPS)
+        run: |
+          CONN_MK="drivers/misc/mediatek/connectivity/Makefile"
+          cp "$CONN_MK" "${CONN_MK}.bak"
+
+          sed -i 's|\$(srctree)/\.\./|\$(srctree)/|g' "$CONN_MK"
+
+          for var in WMT_DRV WLAN_CHR_DRV WLAN_DRV BT_DRV GPS_DRV; do
+            sed -i "s|ABS_PATH_TO_${var}[[:space:]]*=[[:space:]]*\$(srctree)/\$(PATH_TO_${var})|ABS_PATH_TO_${var}       = \$(abspath \$(srctree)/\$(PATH_TO_${var}))|" "$CONN_MK"
+          done
+
+          sed -i 's|\bunlink\b|rm -rf|g' "$CONN_MK"
+          sed -i 's|\bln -s\b|ln -snf|g' "$CONN_MK"
+
+          sed -i 's|^# For BT built-in mode start @{|For BT built-in mode start @{|' "$CONN_MK"
+
+          python3 << 'PYEOF'
+          path = "drivers/misc/mediatek/connectivity/Makefile"
+          with open(path) as f:
+              lines = f.readlines()
+          in_bt = False
+          out = []
+          for line in lines:
+              if 'For BT built-in mode start @{' in line and not line.strip().startswith('#'):
+                  in_bt = True
+                  out.append(line)
+                  continue
+              if '# @} For BT built-in mode end' in line:
+                  in_bt = False
+                  out.append(line)
+                  continue
+              if in_bt and line.startswith('# '):
+                  out.append(line[2:])
+              else:
+                  out.append(line)
+          with open(path, 'w') as f:
+              f.writelines(out)
+          PYEOF
+
+          echo "=== 验证关键行 ==="
+          grep -n -E "ABS_PATH_TO_(WMT|WLAN|BT|GPS)" "$CONN_MK" | head -20
+          grep -n -E "ln -snf|rm -rf" "$CONN_MK" | head -10
+
+      - name: 修改 GPS/BT 驱动为内建
+        run: |
+          # GPS
+          if [ -f vendor/mediatek/kernel_modules/connectivity/gps/Makefile ]; then
+            sed -i 's/^obj-m += \$(MODULE_NAME)\.o/obj-y += $(MODULE_NAME).o/' vendor/mediatek/kernel_modules/connectivity/gps/Makefile
+          fi
+          # BT - 自动检测 legacy 或 connac2
+          for bt_path in \
+            vendor/mediatek/kernel_modules/connectivity/bt/mt66xx/legacy/Makefile \
+            vendor/mediatek/kernel_modules/connectivity/bt/mt66xx/connac2/Makefile; do
+            if [ -f "$bt_path" ]; then
+              echo "=== 找到 BT: $bt_path ==="
+              sed -i 's/^obj-m += \$(MODULE_NAME)\.o/obj-y += $(MODULE_NAME).o/' "$bt_path"
+              grep -n "obj-" "$bt_path" | head -5
+            fi
+          done
+
+          # 去掉 __exit
+          [ -f vendor/mediatek/kernel_modules/connectivity/gps/gps_emi.c ] && \
+            sed -i 's/static void __exit gps_emi_mod_exit/static void gps_emi_mod_exit/' vendor/mediatek/kernel_modules/connectivity/gps/gps_emi.c
+          [ -f vendor/mediatek/kernel_modules/connectivity/gps/fw_log_gps.c ] && \
+            sed -i 's/static void __exit gps_fw_log_exit/static void gps_fw_log_exit/' vendor/mediatek/kernel_modules/connectivity/gps/fw_log_gps.c
+
+      - name: 创建 WLAN/BT/GPS 软链接
+        run: |
+          for d in wmt_drv wmt_chrdev_wifi wlan_drv_gen4m bt gps_drv; do
+            rm -rf drivers/misc/mediatek/connectivity/$d
+          done
+
+          ln -snf "$(pwd)/vendor/mediatek/kernel_modules/connectivity/common" drivers/misc/mediatek/connectivity/wmt_drv
+          ln -snf "$(pwd)/vendor/mediatek/kernel_modules/connectivity/wlan/adaptor" drivers/misc/mediatek/connectivity/wmt_chrdev_wifi
+          ln -snf "$(pwd)/vendor/mediatek/kernel_modules/connectivity/wlan/core/gen4m" drivers/misc/mediatek/connectivity/wlan_drv_gen4m
+          ln -snf "$(pwd)/vendor/mediatek/kernel_modules/connectivity/gps" drivers/misc/mediatek/connectivity/gps_drv
+
+          # BT 路径自动检测
+          for bt_path in \
+            vendor/mediatek/kernel_modules/connectivity/bt/mt66xx/legacy \
+            vendor/mediatek/kernel_modules/connectivity/bt/mt66xx/connac2; do
+            if [ -d "$bt_path" ]; then
+              ln -snf "$(pwd)/$bt_path" drivers/misc/mediatek/connectivity/bt
+              echo "BT 软链接 → $bt_path"
+              break
+            fi
+          done
+
+          ls -la drivers/misc/mediatek/connectivity/ | grep "^l"
 
       - name: 编译内核
         run: |
@@ -99,7 +209,6 @@ jobs:
             --enable CONFIG_DEVTMPFS_MOUNT \
             --enable CONFIG_OVERLAY_FS \
             --enable CONFIG_NET_NS \
-            --enable CONFIG_TUN \
             --enable CONFIG_VETH \
             --enable CONFIG_USER_NS \
             --enable CONFIG_CGROUPS \
@@ -108,19 +217,35 @@ jobs:
             --enable CONFIG_MEMCG \
             --enable CONFIG_CGROUP_SCHED \
             --enable CONFIG_FAIR_GROUP_SCHED \
-            --enable CONFIG_CGROUP_FREEZER
+            --enable CONFIG_CGROUP_FREEZER \
+            --enable CONFIG_WLAN_DRV_BUILD_IN \
+            --enable CONFIG_MTK_COMBO_BT \
+            --enable CONFIG_MTK_COMBO_GPS \
+            --enable CONFIG_MTK_COMBO_WIFI \
+            --set-str CONFIG_MTK_COMBO_CHIP CONSYS_6873
+
+          # 强制 TUN=y（解决 DroidSpaces 显示 TUN ✗ 的问题）
+          sed -i 's/^CONFIG_TUN=m$/CONFIG_TUN=y/' out/.config 2>/dev/null || true
+          sed -i 's/^# CONFIG_TUN is not set$/CONFIG_TUN=y/' out/.config 2>/dev/null || true
+          grep -q "^CONFIG_TUN=" out/.config || echo "CONFIG_TUN=y" >> out/.config
+          sed -i 's/^CONFIG_TUN=.*/CONFIG_TUN=y/' out/.config
+
+          make -j$(nproc) ARCH=arm64 SUBARCH=arm64 CC=clang LD=ld.lld O=out olddefconfig
+
+          # olddefconfig 之后再次强制 TUN=y（防止被改回 m）
+          sed -i 's/^CONFIG_TUN=.*/CONFIG_TUN=y/' out/.config
 
           make -j$(nproc) ARCH=arm64 SUBARCH=arm64 CC=clang LD=ld.lld O=out olddefconfig
 
           echo "=== 验证配置 ==="
-          grep -E "CONFIG_(PID_NS|UTS_NS|IPC_NS|SYSVIPC|DEVTMPFS|NET_NS|VETH|USER_NS|TUN|KALLSYMS_ALL)=" out/.config || true
+          grep -E "CONFIG_(PID_NS|UTS_NS|IPC_NS|SYSVIPC|DEVTMPFS|NET_NS|VETH|USER_NS|TUN|WLAN_DRV_BUILD_IN|MTK_COMBO_BT|MTK_COMBO_GPS|MTK_COMBO_WIFI|MTK_COMBO_CHIP|KALLSYMS_ALL)=" out/.config || true
 
-          make -j$(nproc) ARCH=arm64 SUBARCH=arm64 CC=clang LD=ld.lld O=out
+          make -j$(nproc) ARCH=arm64 SUBARCH=arm64 CC=clang LD=ld.lld O=out CONFIG_WLAN_DRV_BUILD_IN=y
 
       - name: 上传编译产物
         uses: actions/upload-artifact@v4
         with:
-          name: Kernel_Android10_Redmi10X5G
+          name: Kernel_Android10_Redmi10X5G_WLAN
           path: |
             out/arch/arm64/boot/Image
             out/arch/arm64/boot/dts/mediatek/mt6873.dtb
