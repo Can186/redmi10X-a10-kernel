@@ -106,7 +106,12 @@ jobs:
           ln -snf "$(pwd)/vendor/mediatek/kernel_modules/connectivity/wlan/core/gen4m" drivers/misc/mediatek/connectivity/wlan_drv_gen4m
 
           ls -la drivers/misc/mediatek/connectivity/ | grep "^l"
-
+      - name: 修复 wmt_drv 的 AUTOCONF_H
+        run: |
+          WMT_MK="drivers/misc/mediatek/connectivity/wmt_drv/Makefile"
+          head -5 "$WMT_MK"
+          sed -i '1i AUTOCONF_H ?= $(srctree)/$(objtree)/include/config/auto.conf' "$WMT_MK"
+          head -5 "$WMT_MK"
       - name: 编译内核
         run: |
           export PATH="$HOME/miniconda2/bin:/opt/clang9/bin:/opt/gcc-arm64/bin:/opt/gcc-arm32/bin:$PATH"
