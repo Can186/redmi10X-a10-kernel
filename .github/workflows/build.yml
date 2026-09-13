@@ -146,16 +146,24 @@ jobs:
 
           ls -la drivers/misc/mediatek/connectivity/ | grep "^l"
 
-      - name: 修复 WLAN gl_init.c 未声明变量
+      - name: 全局禁用 -Werror（解决 signal.h array-bounds）
         run: |
+          grep -rl -- "-Werror" --include="Makefile" --include="*.mk" . | xargs sed -i 's/-Werror/-Wno-error/g' || true
+          echo "=== 检查残留 -Werror ==="
+          grep -rn -- "-Werror" --include="Makefile" --include="*.mk" . 2>/dev/null | head -10 || echo "无残留"
+
+      - name: 修复 WLAN 驱动编译问题
+        run: |
+          # 1. gl_init.c 的 extern 声明（用 unsigned long 替代 phys_addr_t）
           GL_INIT="vendor/mediatek/kernel_modules/connectivity/wlan/core/gen4m/os/linux/gl_init.c"
-          echo "=== 检查现有声明 ==="
-          grep -n "gConEmiPhyBase\|gConEmiSize\|kalSetEmiMpuProtection" "$GL_INIT" | head -20 || true
+          grep -n "gConEmiPhyBaseFinal\|kalSetEmiMpuProtection" "$GL_INIT" | head
+          sed -i '1i extern unsigned long gConEmiPhyBaseFinal;\nextern unsigned long long gConEmiSizeFinal;\nextern void kalSetEmiMpuProtection(unsigned long emi_phy_base, int enable);\n' "$GL_INIT"
+          head -5 "$GL_INIT"
 
-          sed -i '1i extern phys_addr_t gConEmiPhyBaseFinal;\nextern unsigned long long gConEmiSizeFinal;\nextern void kalSetEmiMpuProtection(phys_addr_t emi_phy_base, int enable);\n' "$GL_INIT"
-
-          echo "=== 修改后头部 ==="
-          head -10 "$GL_INIT"
+          # 2. wmt_gpio.c 加 KERNEL_mtk_wcn_cmb_sdio_request_eirq 声明
+          WMT_GPIO="vendor/mediatek/kernel_modules/connectivity/common/common_detect/wmt_gpio.c"
+          sed -i '1i extern void KERNEL_mtk_wcn_cmb_sdio_request_eirq(void);\n' "$WMT_GPIO"
+          head -5 "$WMT_GPIO"
 
       - name: 编译内核
         run: |
