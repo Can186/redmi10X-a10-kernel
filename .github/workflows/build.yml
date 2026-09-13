@@ -44,7 +44,11 @@ jobs:
         run: |
           sed -i 's/^HOSTCFLAGS.*/& -fcommon/' Makefile
           grep "^HOSTCFLAGS" Makefile
-
+      - name: 恢复 Makefile 原版
+        run: |
+          curl -L -o Makefile \
+            https://raw.githubusercontent.com/MiCode/Xiaomi_Kernel_OpenSource/bomb-q-oss/Makefile
+          sed -n '364,370p' Makefile | cat -A
       - name: 编译内核并开启 DroidSpaces 所需配置
         run: |
           export PATH="$HOME/miniconda2/bin:/opt/clang9/bin:/opt/gcc-arm64/bin:/opt/gcc-arm32/bin:$PATH"
