@@ -34,10 +34,17 @@ jobs:
           wget -q -O arm32.tar.gz https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/refs/tags/android-10.0.0_r47.tar.gz
           mkdir -p /opt/gcc-arm32 && tar -xf arm32.tar.gz -C /opt/gcc-arm32
 
+      - name: 恢复 Makefile 原版
+        run: |
+          curl -L -o Makefile \
+            https://raw.githubusercontent.com/MiCode/Xiaomi_Kernel_OpenSource/bomb-q-oss/Makefile
+          sed -n '364,370p' Makefile | cat -A
+
       - name: 修复 dtc yylloc 多重定义
         run: |
-          sed -i 's|^HOSTCFLAGS_dtc := \(.*\)|HOSTCFLAGS_dtc := \1 -fcommon|' scripts/dtc/Makefile
-          grep -n "HOSTCFLAGS_dtc" scripts/dtc/Makefile
+          grep -n "^HOSTCFLAGS " Makefile
+          sed -i 's|-std=gnu89 $(HOST_LFS_CFLAGS)$|-std=gnu89 $(HOST_LFS_CFLAGS) -fcommon|' Makefile
+          grep -n "^HOSTCFLAGS " Makefile
 
       - name: 强制 DrvGen.py 使用 Python 2
         run: |
