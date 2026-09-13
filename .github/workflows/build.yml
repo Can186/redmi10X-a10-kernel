@@ -208,7 +208,6 @@ jobs:
           grep -q "^CONFIG_TUN=" out/.config || echo "CONFIG_TUN=y" >> out/.config
 
           make -j$(nproc) ARCH=arm64 SUBARCH=arm64 CC=clang LD=ld.lld O=out olddefconfig
-
           sed -i 's/^CONFIG_TUN=.*/CONFIG_TUN=y/' out/.config
           make -j$(nproc) ARCH=arm64 SUBARCH=arm64 CC=clang LD=ld.lld O=out olddefconfig
 
@@ -217,7 +216,17 @@ jobs:
 
           make -j$(nproc) ARCH=arm64 SUBARCH=arm64 CC=clang LD=ld.lld O=out \
             AUTOCONF_H=$(pwd)/out/include/generated/autoconf.h \
-            CONFIG_WLAN_DRV_BUILD_IN=y
+            CONFIG_WLAN_DRV_BUILD_IN=y 2>&1 | tee build.log
+          exit ${PIPESTATUS[0]}
+
+      - name: 编译失败时打印错误上下文
+        if: failure()
+        run: |
+          echo "=== 查找所有 error 行 ==="
+          grep -n -i "error" build.log | grep -v "Werror" | head -50
+          echo ""
+          echo "=== 最后 150 行 ==="
+          tail -150 build.log
 
       - name: 上传编译产物
         uses: actions/upload-artifact@v4
