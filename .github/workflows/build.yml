@@ -124,11 +124,7 @@ jobs:
       - name: 修改 GPS/BT 驱动为内建
         run: |
           sed -i 's/^obj-m += \$(MODULE_NAME)\.o/obj-y += $(MODULE_NAME).o/' vendor/mediatek/kernel_modules/connectivity/gps/Makefile
-          grep -n "obj-" vendor/mediatek/kernel_modules/connectivity/gps/Makefile | head -5
-
           sed -i 's/^obj-m += \$(MODULE_NAME)\.o/obj-y += $(MODULE_NAME).o/' vendor/mediatek/kernel_modules/connectivity/bt/mt66xx/legacy/Makefile
-          grep -n "obj-" vendor/mediatek/kernel_modules/connectivity/bt/mt66xx/legacy/Makefile | head -5
-
           sed -i 's/static void __exit gps_emi_mod_exit/static void gps_emi_mod_exit/' vendor/mediatek/kernel_modules/connectivity/gps/gps_emi.c
           sed -i 's/static void __exit gps_fw_log_exit/static void gps_fw_log_exit/' vendor/mediatek/kernel_modules/connectivity/gps/fw_log_gps.c
 
@@ -154,14 +150,13 @@ jobs:
 
       - name: 修复 WLAN 驱动编译问题
         run: |
-          # 1. gl_init.c 的 extern 声明（用 unsigned long 替代 phys_addr_t）
           GL_INIT="vendor/mediatek/kernel_modules/connectivity/wlan/core/gen4m/os/linux/gl_init.c"
           grep -n "gConEmiPhyBaseFinal\|kalSetEmiMpuProtection" "$GL_INIT" | head
           sed -i '1i extern unsigned long gConEmiPhyBaseFinal;\nextern unsigned long long gConEmiSizeFinal;\nextern void kalSetEmiMpuProtection(unsigned long emi_phy_base, int enable);\n' "$GL_INIT"
           head -5 "$GL_INIT"
 
-          # 2. wmt_gpio.c 加 KERNEL_mtk_wcn_cmb_sdio_request_eirq 声明
           WMT_GPIO="vendor/mediatek/kernel_modules/connectivity/common/common_detect/wmt_gpio.c"
+          grep -n "KERNEL_mtk_wcn_cmb_sdio_request_eirq" "$WMT_GPIO" | head
           sed -i '1i extern void KERNEL_mtk_wcn_cmb_sdio_request_eirq(void);\n' "$WMT_GPIO"
           head -5 "$WMT_GPIO"
 
@@ -182,6 +177,7 @@ jobs:
           scripts/config --file out/.config \
             --disable CONFIG_CC_STACKPROTECTOR_STRONG \
             --disable LTO_CLANG \
+            --enable CONFIG_KALLSYMS \
             --enable CONFIG_KALLSYMS_ALL \
             --enable CONFIG_NAMESPACES \
             --enable CONFIG_PID_NS \
@@ -215,7 +211,7 @@ jobs:
           make -j$(nproc) ARCH=arm64 SUBARCH=arm64 CC=clang LD=ld.lld O=out olddefconfig
 
           echo "=== 验证配置 ==="
-          grep -E "CONFIG_(PID_NS|UTS_NS|IPC_NS|SYSVIPC|DEVTMPFS|NET_NS|VETH|USER_NS|TUN|WLAN_DRV_BUILD_IN|MTK_COMBO_BT|MTK_COMBO_GPS|MTK_COMBO_WIFI|MTK_COMBO_CHIP)=" out/.config || true
+          grep -E "CONFIG_(PID_NS|UTS_NS|IPC_NS|SYSVIPC|DEVTMPFS|NET_NS|VETH|USER_NS|TUN|WLAN_DRV_BUILD_IN|MTK_COMBO_BT|MTK_COMBO_GPS|MTK_COMBO_WIFI|MTK_COMBO_CHIP|KALLSYMS_ALL)=" out/.config || true
 
           make -j$(nproc) ARCH=arm64 SUBARCH=arm64 CC=clang LD=ld.lld O=out CONFIG_WLAN_DRV_BUILD_IN=y
 
