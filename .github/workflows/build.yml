@@ -112,6 +112,16 @@ jobs:
           head -5 "$WMT_MK"
           sed -i '1i AUTOCONF_H ?= $(srctree)/$(objtree)/include/config/auto.conf' "$WMT_MK"
           head -5 "$WMT_MK"
+      - name: 修复 wmt_exp.h 找不到
+        run: |
+          ADAPTOR_MK="vendor/mediatek/kernel_modules/connectivity/wlan/adaptor/Makefile"
+          echo "=== 查找 wmt_exp.h ==="
+          find vendor/mediatek/kernel_modules/connectivity -name "wmt_exp.h" 2>/dev/null
+          echo "=== adaptor Makefile 前 10 行 ==="
+          head -10 "$ADAPTOR_MK"
+          echo "=== 添加 include 路径 ==="
+          sed -i '1i ccflags-y += -I$(srctree)/vendor/mediatek/kernel_modules/connectivity/common/core/include' "$ADAPTOR_MK"
+          head -8 "$ADAPTOR_MK"
       - name: 编译内核
         run: |
           export PATH="$HOME/miniconda2/bin:/opt/clang9/bin:/opt/gcc-arm64/bin:/opt/gcc-arm32/bin:$PATH"
