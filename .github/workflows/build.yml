@@ -99,117 +99,30 @@ jobs:
 
           ls -la drivers/misc/mediatek/connectivity/ | grep "^l"
 
-      - name: 修复 wmt_drv 的 AUTOCONF_H
+      - name: 查找并修复头文件路径
         run: |
-          WMT_MK="drivers/misc/mediatek/connectivity/wmt_drv/Makefile"
-          echo "=== 原始前 10 行 ==="
-          head -10 "$WMT_MK"
-          # 指向 autoconf.h（C 头文件），不是 auto.conf
-          sed -i '1i AUTOCONF_H ?= $(srctree)/$(objtree)/include/generated/autoconf.h' "$WMT_MK"
-          echo "=== 修改后前 10 行 ==="
-          head -10 "$WMT_MK"
+          echo "=== 查找 connsys_coredump.h ==="
+          find vendor/mediatek/kernel_modules/connectivity/ -name "connsys_coredump.h" 2>/dev/null
+          echo "=== 查找 connsys_debug_utility.h ==="
+          find vendor/mediatek/kernel_modules/connectivity/ -name "connsys_debug_utility.h" 2>/dev/null
+          echo "=== conninfra 目录结构 ==="
+          find vendor/mediatek/kernel_modules/connectivity/conninfra/ -type d | head -40
 
-      - name: 修复 wmt_exp.h 及其依赖头文件
-        run: |
           INC1="\$(srctree)/vendor/mediatek/kernel_modules/connectivity/common/common_main/include"
           INC2="\$(srctree)/vendor/mediatek/kernel_modules/connectivity/common/common_main/linux/include"
           INC3="\$(srctree)/vendor/mediatek/kernel_modules/connectivity/common/core/include"
-          INC4="\$(srctree)/vendor/mediatek/kernel_modules/connectivity/conninfra/include"
-          INC5="\$(srctree)/vendor/mediatek/kernel_modules/connectivity/conninfra/debug_utility/include"
-          INC6="\$(srctree)/vendor/mediatek/kernel_modules/connectivity/conninfra/connsyslog/include"
-          INC7="\$(srctree)/vendor/mediatek/kernel_modules/connectivity/conninfra/debug_utility/connsyslog/include"
 
           ADAPTOR_MK="vendor/mediatek/kernel_modules/connectivity/wlan/adaptor/Makefile"
-          echo "=== adaptor Makefile 前 5 行 ==="
-          head -5 "$ADAPTOR_MK"
-          sed -i "1i ccflags-y += -I$INC1" "$ADAPTOR_MK"
-          sed -i "1i ccflags-y += -I$INC2" "$ADAPTOR_MK"
-          sed -i "1i ccflags-y += -I$INC3" "$ADAPTOR_MK"
-          sed -i "1i ccflags-y += -I$INC4" "$ADAPTOR_MK"
-          sed -i "1i ccflags-y += -I$INC5" "$ADAPTOR_MK"
-          sed -i "1i ccflags-y += -I$INC6" "$ADAPTOR_MK"
-          sed -i "1i ccflags-y += -I$INC7" "$ADAPTOR_MK"
-          echo "=== 修改后前 10 行 ==="
-          head -10 "$ADAPTOR_MK"
+          for i in "$INC1" "$INC2" "$INC3"; do
+            sed -i "1i ccflags-y += -I$i" "$ADAPTOR_MK"
+          done
 
           GEN4M_MK="vendor/mediatek/kernel_modules/connectivity/wlan/core/gen4m/Makefile"
-          echo "=== gen4m Makefile 前 5 行 ==="
-          head -5 "$GEN4M_MK"
-          sed -i "1i ccflags-y += -I$INC1" "$GEN4M_MK"
-          sed -i "1i ccflags-y += -I$INC2" "$GEN4M_MK"
-          sed -i "1i ccflags-y += -I$INC3" "$GEN4M_MK"
-          sed -i "1i ccflags-y += -I$INC4" "$GEN4M_MK"
-          sed -i "1i ccflags-y += -I$INC5" "$GEN4M_MK"
-          sed -i "1i ccflags-y += -I$INC6" "$GEN4M_MK"
-          sed -i "1i ccflags-y += -I$INC7" "$GEN4M_MK"
-          echo "=== 修改后前 10 行 ==="
+          for i in "$INC1" "$INC2" "$INC3"; do
+            sed -i "1i ccflags-y += -I$i" "$GEN4M_MK"
+          done
+
+          echo "=== adaptor 前 10 行 ==="
+          head -10 "$ADAPTOR_MK"
+          echo "=== gen4m 前 10 行 ==="
           head -10 "$GEN4M_MK"
-
-      - name: 编译内核
-        run: |
-          export PATH="$HOME/miniconda2/bin:/opt/clang9/bin:/opt/gcc-arm64/bin:/opt/gcc-arm32/bin:$PATH"
-          export ARCH=arm64
-          export SUBARCH=arm64
-          export CROSS_COMPILE=aarch64-linux-androidkernel-
-          export CROSS_COMPILE_ARM32=arm-linux-androideabi-
-          export CLANG_TRIPLE=aarch64-linux-gnu-
-          export KCFLAGS="-Wno-error -Wno-self-assign -Wno-unknown-warning-option -Wno-ignored-optimization-argument"
-
-          python --version
-
-          make -j$(nproc) ARCH=arm64 SUBARCH=arm64 CC=clang LD=ld.lld O=out atom_user_defconfig
-
-          scripts/config --file out/.config \
-            --disable CONFIG_CC_STACKPROTECTOR_STRONG \
-            --disable LTO_CLANG \
-            --enable CONFIG_KALLSYMS \
-            --enable CONFIG_KALLSYMS_ALL \
-            --enable CONFIG_NAMESPACES \
-            --enable CONFIG_PID_NS \
-            --enable CONFIG_UTS_NS \
-            --enable CONFIG_IPC_NS \
-            --enable CONFIG_SYSVIPC \
-            --enable CONFIG_POSIX_MQUEUE \
-            --enable CONFIG_SYSCTL \
-            --enable CONFIG_SECCOMP \
-            --enable CONFIG_SECCOMP_FILTER \
-            --enable CONFIG_DEVTMPFS \
-            --enable CONFIG_DEVTMPFS_MOUNT \
-            --enable CONFIG_OVERLAY_FS \
-            --enable CONFIG_NET_NS \
-            --enable CONFIG_TUN \
-            --enable CONFIG_VETH \
-            --enable CONFIG_USER_NS \
-            --enable CONFIG_CGROUPS \
-            --enable CONFIG_CGROUP_DEVICE \
-            --enable CONFIG_CGROUP_PIDS \
-            --enable CONFIG_MEMCG \
-            --enable CONFIG_CGROUP_SCHED \
-            --enable CONFIG_FAIR_GROUP_SCHED \
-            --enable CONFIG_CGROUP_FREEZER \
-            --enable CONFIG_WLAN_DRV_BUILD_IN \
-            --enable CONFIG_MTK_COMBO_WIFI \
-            --set-str CONFIG_MTK_COMBO_CHIP CONSYS_6873
-
-          sed -i 's/^CONFIG_TUN=.*/CONFIG_TUN=y/' out/.config
-          grep -q "^CONFIG_TUN=" out/.config || echo "CONFIG_TUN=y" >> out/.config
-
-          make -j$(nproc) ARCH=arm64 SUBARCH=arm64 CC=clang LD=ld.lld O=out olddefconfig
-
-          sed -i 's/^CONFIG_TUN=.*/CONFIG_TUN=y/' out/.config
-          make -j$(nproc) ARCH=arm64 SUBARCH=arm64 CC=clang LD=ld.lld O=out olddefconfig
-
-          echo "=== 验证配置 ==="
-          grep -E "CONFIG_(PID_NS|UTS_NS|IPC_NS|SYSVIPC|DEVTMPFS|NET_NS|VETH|USER_NS|TUN|WLAN_DRV_BUILD_IN|MTK_COMBO_WIFI|MTK_COMBO_CHIP|KALLSYMS_ALL)=" out/.config || true
-
-          make -j$(nproc) ARCH=arm64 SUBARCH=arm64 CC=clang LD=ld.lld O=out \
-            AUTOCONF_H=$(pwd)/out/include/config/auto.conf \
-            CONFIG_WLAN_DRV_BUILD_IN=y
-
-      - name: 上传编译产物
-        uses: actions/upload-artifact@v4
-        with:
-          name: Kernel_Android10_Redmi10X5G_WLAN
-          path: |
-            out/arch/arm64/boot/Image
-            out/arch/arm64/boot/dts/mediatek/mt6873.dtb
