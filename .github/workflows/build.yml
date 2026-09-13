@@ -140,7 +140,24 @@ jobs:
           head -20 "$ADAPTOR_MK"
           echo "=== gen4m 前 20 行 ==="
           head -20 "$GEN4M_MK"
+      - name: 修复 CONNLOG_TYPE_WIFI 未定义
+        run: |
+          ADAPTOR_C="vendor/mediatek/kernel_modules/connectivity/wlan/adaptor/fw_log_wifi.c"
+          echo "=== 原始前 10 行 ==="
+          head -10 "$ADAPTOR_C"
 
+          if ! grep -q "CONNLOG_TYPE_WIFI" "$ADAPTOR_C"; then
+            echo "  文件里没有 CONNLOG_TYPE_WIFI，跳过"
+          else
+            LAST_INC=$(grep -n '^#include' "$ADAPTOR_C" | tail -1 | cut -d: -f1)
+            echo "  最后一个 #include 在第 $LAST_INC 行"
+            sed -i "${LAST_INC}i #ifndef CONNLOG_TYPE_WIFI\n#define CONNLOG_TYPE_WIFI CONN_DEBUG_TYPE_WIFI\n#endif" "$ADAPTOR_C"
+          fi
+
+          echo "=== 修改后前 20 行 ==="
+          head -20 "$ADAPTOR_C"
+          echo "=== 验证 CONNLOG_TYPE_WIFI ==="
+          grep -n "CONNLOG_TYPE_WIFI" "$ADAPTOR_C" | head -5
       - name: 编译内核
         run: |
           export PATH="$HOME/miniconda2/bin:/opt/clang9/bin:/opt/gcc-arm64/bin:/opt/gcc-arm32/bin:$PATH"
