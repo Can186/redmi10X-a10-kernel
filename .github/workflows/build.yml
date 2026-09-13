@@ -70,7 +70,7 @@ jobs:
             vendor/mediatek/kernel_modules/connectivity/fmradio/Makefile \
             vendor/mediatek/kernel_modules/connectivity/gps/Makefile; do
             echo "=== $f ==="
-            grep -n "TOP" "$f" || echo "  (no TOP)"
+            grep -n "^TOP" "$f" || echo "  (no TOP)"
             sed -i 's|TOP[[:space:]]*:=[[:space:]]*\$(srctree)/\.\.|TOP := $(srctree)/|' "$f"
             grep -n "^TOP" "$f" || echo "  (still no TOP)"
           done
@@ -80,22 +80,19 @@ jobs:
           CONN_MK="drivers/misc/mediatek/connectivity/Makefile"
           cp "$CONN_MK" "${CONN_MK}.bak"
 
-          # 1. 去掉所有 $(srctree)/../
           sed -i 's|\$(srctree)/\.\./|\$(srctree)/|g' "$CONN_MK"
 
-          # 2. 给 ABS_PATH_TO_* 包 abspath
           sed -i 's|ABS_PATH_TO_WMT_DRV[[:space:]]*=[[:space:]]*\$(srctree)/\$(PATH_TO_WMT_DRV)|ABS_PATH_TO_WMT_DRV       = \$(abspath \$(srctree)/\$(PATH_TO_WMT_DRV))|' "$CONN_MK"
           sed -i 's|ABS_PATH_TO_WLAN_CHR_DRV[[:space:]]*=[[:space:]]*\$(srctree)/\$(PATH_TO_WLAN_CHR_DRV)|ABS_PATH_TO_WLAN_CHR_DRV  = \$(abspath \$(srctree)/\$(PATH_TO_WLAN_CHR_DRV))|' "$CONN_MK"
           sed -i 's|ABS_PATH_TO_WLAN_DRV[[:space:]]*=[[:space:]]*\$(srctree)/\$(PATH_TO_WLAN_DRV)|ABS_PATH_TO_WLAN_DRV      = \$(abspath \$(srctree)/\$(PATH_TO_WLAN_DRV))|' "$CONN_MK"
           sed -i 's|ABS_PATH_TO_BT_DRV[[:space:]]*=[[:space:]]*\$(srctree)/\$(PATH_TO_BT_DRV)|ABS_PATH_TO_BT_DRV       = \$(abspath \$(srctree)/\$(PATH_TO_BT_DRV))|' "$CONN_MK"
           sed -i 's|ABS_PATH_TO_GPS_DRV[[:space:]]*=[[:space:]]*\$(srctree)/\$(PATH_TO_GPS_DRV)|ABS_PATH_TO_GPS_DRV      = \$(abspath \$(srctree)/\$(PATH_TO_GPS_DRV))|' "$CONN_MK"
 
-          # 3. unlink → rm -rf, ln -s → ln -snf
           sed -i 's|\bunlink\b|rm -rf|g' "$CONN_MK"
           sed -i 's|\bln -s\b|ln -snf|g' "$CONN_MK"
 
-          # 4. BT/GPS 取消注释
           sed -i 's|^# For BT built-in mode start @{|For BT built-in mode start @{|' "$CONN_MK"
+
           python3 << 'PYEOF'
           path = "drivers/misc/mediatek/connectivity/Makefile"
           with open(path) as f:
@@ -123,6 +120,7 @@ jobs:
           grep -n -E "ABS_PATH_TO_(WMT|WLAN|BT|GPS)|PATH_TO_(WMT|WLAN|BT|GPS)" "$CONN_MK" | head -30
           echo "=== 验证 ln/rm ==="
           grep -n -E "ln -snf|rm -rf" "$CONN_MK" | head -10
+
       - name: 修改 GPS/BT 驱动为内建
         run: |
           sed -i 's/^obj-m += \$(MODULE_NAME)\.o/obj-y += $(MODULE_NAME).o/' vendor/mediatek/kernel_modules/connectivity/gps/Makefile
@@ -148,6 +146,17 @@ jobs:
 
           ls -la drivers/misc/mediatek/connectivity/ | grep "^l"
 
+      - name: 修复 WLAN gl_init.c 未声明变量
+        run: |
+          GL_INIT="vendor/mediatek/kernel_modules/connectivity/wlan/core/gen4m/os/linux/gl_init.c"
+          echo "=== 检查现有声明 ==="
+          grep -n "gConEmiPhyBase\|gConEmiSize\|kalSetEmiMpuProtection" "$GL_INIT" | head -20 || true
+
+          sed -i '1i extern phys_addr_t gConEmiPhyBaseFinal;\nextern unsigned long long gConEmiSizeFinal;\nextern void kalSetEmiMpuProtection(phys_addr_t emi_phy_base, int enable);\n' "$GL_INIT"
+
+          echo "=== 修改后头部 ==="
+          head -10 "$GL_INIT"
+
       - name: 编译内核
         run: |
           export PATH="$HOME/miniconda2/bin:/opt/clang9/bin:/opt/gcc-arm64/bin:/opt/gcc-arm32/bin:$PATH"
@@ -156,7 +165,7 @@ jobs:
           export CROSS_COMPILE=aarch64-linux-androidkernel-
           export CROSS_COMPILE_ARM32=arm-linux-androideabi-
           export CLANG_TRIPLE=aarch64-linux-gnu-
-          export KCFLAGS="-Wno-error"
+          export KCFLAGS="-Wno-error -Wno-self-assign"
 
           python --version
 
@@ -165,6 +174,7 @@ jobs:
           scripts/config --file out/.config \
             --disable CONFIG_CC_STACKPROTECTOR_STRONG \
             --disable LTO_CLANG \
+            --enable CONFIG_KALLSYMS_ALL \
             --enable CONFIG_NAMESPACES \
             --enable CONFIG_PID_NS \
             --enable CONFIG_UTS_NS \
