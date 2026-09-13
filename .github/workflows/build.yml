@@ -56,6 +56,15 @@ jobs:
           sed -i 's|\.\./tools/dct/DrvGen.py|python ../tools/dct/DrvGen.py|g' scripts/drvgen/drvgen.mk
           grep -n "DrvGen.py" scripts/drvgen/drvgen.mk
 
+      - name: 创建触摸屏固件占位文件
+        run: |
+          mkdir -p drivers/input/touchscreen/focaltech_touch/include/firmware
+          mkdir -p drivers/input/touchscreen/focaltech_touch/include/pramboot
+          touch drivers/input/touchscreen/focaltech_touch/include/firmware/fw_ft3518_j7.i
+          touch drivers/input/touchscreen/focaltech_touch/include/firmware/fw_sample.i
+          touch drivers/input/touchscreen/focaltech_touch/include/pramboot/FT8719_Pramboot_V0.5_20171221.i
+          ls -la drivers/input/touchscreen/focaltech_touch/include/firmware/
+          ls -la drivers/input/touchscreen/focaltech_touch/include/pramboot/
       - name: 编译内核并开启 DroidSpaces 所需配置
         run: |
           export PATH="$HOME/miniconda2/bin:/opt/clang9/bin:/opt/gcc-arm64/bin:/opt/gcc-arm32/bin:$PATH"
